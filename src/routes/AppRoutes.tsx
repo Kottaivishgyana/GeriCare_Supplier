@@ -13,7 +13,17 @@ export function AppRoutes() {
       <Route
         path="/login"
         element={
-          isAuthenticated ? <Navigate to={homePage || '/dashboard'} replace /> : <SigninPage />
+          isAuthenticated ? <Navigate to={homePage || '/me'} replace /> : <SigninPage />
+        }
+      />
+
+      {/* Redirect /dashboard to /me to avoid 404 */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/me" replace />
+          </ProtectedRoute>
         }
       />
 
@@ -30,7 +40,12 @@ export function AppRoutes() {
       {/* Default redirect */}
       <Route
         path="/"
-        element={<Navigate to={isAuthenticated ? (homePage || '/dashboard') : '/login'} replace />}
+        element={
+          <Navigate
+            to={isAuthenticated ? (homePage || '/me') : '/login'}
+            replace
+          />
+        }
       />
     </Routes>
   )

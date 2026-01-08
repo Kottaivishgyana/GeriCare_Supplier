@@ -204,16 +204,18 @@ export default function DashboardPage() {
         setIsContentLoading(true)
         setError(null)
 
-        const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url}`
+        // Normalize /dashboard to /me to avoid 404 errors
+        const normalizedUrl = url === '/dashboard' ? '/me' : url
+        const fullUrl = normalizedUrl.startsWith('http') ? normalizedUrl : `${API_BASE}${normalizedUrl}`
         const response = await fetchWithAuth(fullUrl, token)
 
         if (response.ok) {
           const html = await response.text()
           const { content, styles } = extractStylesAndContent(html)
-          
+
           // Small delay to ensure smooth transition
           await new Promise((resolve) => setTimeout(resolve, 50))
-          
+
           setContentStyles(styles)
           // Set content after styles to prevent flicker
           setTimeout(() => {
@@ -294,8 +296,12 @@ export default function DashboardPage() {
     fetchSidebar()
   }, [homePage, token])
 
-  // Navigate to home page on initial load
+  // Navigate to home page on initial load or redirect /dashboard to /me
   useEffect(() => {
+    if (location.pathname === '/dashboard') {
+      navigate('/me', { replace: true })
+      return
+    }
     if (homePage && location.pathname === '/' && token) {
       navigate(homePage, { replace: true })
     }
@@ -411,17 +417,16 @@ export default function DashboardPage() {
                           <a
                             href={item.href}
                             onClick={(e) => handleSidebarClick(item.href, e)}
-                            className={`block px-3 py-2 rounded-md text-sm font-medium transition-colors duration-150 ${
-                              isActive
+                            className={`block px-3 py-2 rounded-md text-sm font-medium transition-colors duration-150 ${isActive
                                 ? 'bg-blue-500 text-white !important'
                                 : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                            }`}
+                              }`}
                             style={
                               isActive
                                 ? {
-                                    backgroundColor: 'rgb(59 130 246)',
-                                    color: 'white',
-                                  }
+                                  backgroundColor: 'rgb(59 130 246)',
+                                  color: 'white',
+                                }
                                 : undefined
                             }
                           >
@@ -443,12 +448,11 @@ export default function DashboardPage() {
                   <div className="text-muted-foreground">Loading content...</div>
                 </div>
               )}
-              
+
               {/* Content with smooth fade transition */}
               <div
-                className={`h-full overflow-y-auto transition-opacity duration-300 [transform:translateZ(0)] ${
-                  isContentLoading && mainContent ? 'opacity-50' : 'opacity-100'
-                }`}
+                className={`h-full overflow-y-auto transition-opacity duration-300 [transform:translateZ(0)] ${isContentLoading && mainContent ? 'opacity-50' : 'opacity-100'
+                  }`}
               >
                 {contentStyles && <style dangerouslySetInnerHTML={{ __html: contentStyles }} />}
                 {mainContent ? (

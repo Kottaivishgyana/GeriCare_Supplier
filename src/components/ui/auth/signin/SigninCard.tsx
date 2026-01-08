@@ -28,8 +28,8 @@ export function SigninCard() {
     const result = await login(email, password)
     
     if (result.success) {
-      // Always redirect to dashboard after successful login
-      navigate('/dashboard')
+      // Redirect to the resolved home page (normalised in the auth store, defaults to /me)
+      navigate(result.homePage || '/me', { replace: true })
     }
     
     setIsLoading(false)

@@ -49,9 +49,13 @@ export const useAuthStore = create<AuthState>()(
 
           // Handle successful login - response can be "Logged In" or "No App"
           if (response.ok && (data.message === 'Logged In' || data.message === 'No App')) {
-            const homePage = data.home_page || '/me'
+            // Normalise home page: some responses may return `/dashboard`, which 404s on this site.
+            // Always use `/me` instead of `/dashboard` to avoid 404 errors
+            const apiHomePage = data.home_page as string | undefined
+            const homePage =
+              !apiHomePage || apiHomePage === '/dashboard' ? '/me' : apiHomePage
             // Use the provided token for API authentication
-            const token = 'b5a11fd3272c41d:b107017770524e7'
+            const token = 'b5a11fd3272c41d:ba2b8a2e5d77188'
             set({
               isAuthenticated: true,
               user: {
