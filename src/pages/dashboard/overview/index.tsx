@@ -12,6 +12,7 @@ const SKIP_ROUTES = ['/', '/login']
 interface ExtractedContent {
   content: string
   styles: string
+  stylesheetUrls: string[]
 }
 
 interface SidebarItem {
@@ -98,17 +99,20 @@ const extractStylesAndContent = (html: string): ExtractedContent => {
     const parser = new DOMParser()
     const doc = parser.parseFromString(html, 'text/html')
 
-    // Extract and sanitize styles
+    // Extract and sanitize inline styles
     let styles = ''
     doc.querySelectorAll('style').forEach((style) => {
-      styles += sanitizeStyles(style.innerHTML) + '\n'
+      const styleContent = style.innerHTML || style.textContent || ''
+      styles += sanitizeStyles(styleContent) + '\n'
     })
 
-    // Extract external stylesheets
+    // Extract external stylesheets URLs
+    const stylesheetLinks: string[] = []
     doc.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
       const href = link.getAttribute('href')
       if (href) {
-        styles += `@import url('${fixRelativeUrl(href)}');\n`
+        const fixedUrl = fixRelativeUrl(href)
+        stylesheetLinks.push(fixedUrl)
       }
     })
 
@@ -137,13 +141,28 @@ const extractStylesAndContent = (html: string): ExtractedContent => {
       element.setAttribute('style', fixedStyle)
     })
 
+    // Fix relative URLs in style attributes that might contain background images
+    contentClone.querySelectorAll('*').forEach((element) => {
+      const styleAttr = element.getAttribute('style')
+      if (styleAttr) {
+        const fixedStyle = styleAttr.replace(/url\(['"]?([^'")]+)['"]?\)/g, (_match, url) => {
+          if (url.startsWith('http') || url.startsWith('data:')) {
+            return `url('${url}')`
+          }
+          return `url('${fixRelativeUrl(url)}')`
+        })
+        element.setAttribute('style', fixedStyle)
+      }
+    })
+
     return {
       content: contentClone.innerHTML,
       styles,
+      stylesheetUrls: stylesheetLinks,
     }
   } catch (error) {
     console.error('Error extracting styles and content:', error)
-    return { content: html, styles: '' }
+    return { content: html, styles: '', stylesheetUrls: [] }
   }
 }
 
@@ -186,11 +205,13 @@ export default function DashboardPage() {
   const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([])
   const [mainContent, setMainContent] = useState<string>('')
   const [contentStyles, setContentStyles] = useState<string>('')
+  const [stylesheetUrls, setStylesheetUrls] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isContentLoading, setIsContentLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
+  const styleRef = useRef<HTMLStyleElement | null>(null)
 
   // Fetch page content
   const fetchPageContent = useCallback(
@@ -211,11 +232,12 @@ export default function DashboardPage() {
 
         if (response.ok) {
           const html = await response.text()
-          const { content, styles } = extractStylesAndContent(html)
+          const { content, styles, stylesheetUrls } = extractStylesAndContent(html)
 
           // Small delay to ensure smooth transition
           await new Promise((resolve) => setTimeout(resolve, 50))
 
+          setStylesheetUrls(stylesheetUrls)
           setContentStyles(styles)
           // Set content after styles to prevent flicker
           setTimeout(() => {
@@ -329,6 +351,47 @@ export default function DashboardPage() {
     content.addEventListener('click', handleContentClick)
     return () => content.removeEventListener('click', handleContentClick)
   }, [mainContent, handleContentClick])
+
+  // Inject styles into document head for better compatibility
+  useEffect(() => {
+    // Remove previous dynamic style element
+    const existingStyle = document.querySelector('style[data-dynamic-styles="true"]')
+    if (existingStyle) {
+      existingStyle.remove()
+    }
+
+    // Remove previous dynamic stylesheet links
+    const existingLinks = document.querySelectorAll('link[data-dynamic-stylesheet="true"]')
+    existingLinks.forEach((link) => link.remove())
+
+    // Add inline styles to head
+    if (contentStyles) {
+      const styleElement = document.createElement('style')
+      styleElement.setAttribute('data-dynamic-styles', 'true')
+      styleElement.textContent = contentStyles
+      document.head.appendChild(styleElement)
+      styleRef.current = styleElement
+    }
+
+    // Add external stylesheets to head
+    stylesheetUrls.forEach((url) => {
+      const linkElement = document.createElement('link')
+      linkElement.setAttribute('rel', 'stylesheet')
+      linkElement.setAttribute('href', url)
+      linkElement.setAttribute('data-dynamic-stylesheet', 'true')
+      document.head.appendChild(linkElement)
+    })
+
+    // Cleanup function
+    return () => {
+      if (styleRef.current) {
+        styleRef.current.remove()
+        styleRef.current = null
+      }
+      const links = document.querySelectorAll('link[data-dynamic-stylesheet="true"]')
+      links.forEach((link) => link.remove())
+    }
+  }, [contentStyles, stylesheetUrls])
 
   const handleLogout = async () => {
     await logout()
@@ -454,7 +517,6 @@ export default function DashboardPage() {
                 className={`h-full overflow-y-auto transition-opacity duration-300 [transform:translateZ(0)] ${isContentLoading && mainContent ? 'opacity-50' : 'opacity-100'
                   }`}
               >
-                {contentStyles && <style dangerouslySetInnerHTML={{ __html: contentStyles }} />}
                 {mainContent ? (
                   <div
                     ref={contentRef}
